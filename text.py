@@ -3,8 +3,15 @@ from datasets import load_dataset, Dataset
 import jieba
 from transformers import AutoTokenizer, AutoModelForCausalLM, Trainer, TrainingArguments
 import re
-
+import torch 
 # Function to load and preprocess data
+import os
+import re
+import jieba
+
+PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 
+device = torch.device('mps')
+
 def load_and_preprocess_data(data_dir):
     texts = []
     pattern = re.compile(r'第.*?章')  # Regular expression pattern to match '第...章'
@@ -12,10 +19,12 @@ def load_and_preprocess_data(data_dir):
     for filename in os.listdir(data_dir):
         if filename.endswith(".txt"):
             with open(os.path.join(data_dir, filename), 'r', encoding='utf-8') as file:
-                text = file.read()
+                lines = file.readlines()
+                non_blank_lines = [line for line in lines if line.strip() != ''] # Remove all blank lines
+                text = ''.join(non_blank_lines)  # Join non-blank lines into a single string
                 text_no_spaces = text.replace(' ', '')  # Remove all blank spaces
                 text_no_chapters = re.sub(pattern, '', text_no_spaces)  # Remove '第...章' patterns
-                tokenized_text = ' '.join(jieba.cut(text_no_chapters))
+                tokenized_text = ' '.join(jieba.cut(text_no_chapters))  # Tokenize text using jieba
                 texts.append(tokenized_text)
     
     if not texts:
@@ -23,15 +32,18 @@ def load_and_preprocess_data(data_dir):
     
     return texts
 
+
 # Load and preprocess the data
 data_dir = 'data'
 texts = load_and_preprocess_data(data_dir)
+print(len(texts[0]))
+
 
 # Create a dataset from the concatenated texts
 dataset = Dataset.from_dict({"text": texts})
 
 # Load pre-trained model and tokenizer
-tokenizer = AutoTokenizer.from_pretrained("hfl/llama-3-chinese-8b-instruct-v3")
+tokenizer = AutoTokenizer.from_pretrained("hfl/llama-3-chinese-8b-instruct-v3", model_max_length=512)
 model = AutoModelForCausalLM.from_pretrained("hfl/llama-3-chinese-8b-instruct-v3")
 
 # Tokenize the dataset
@@ -54,6 +66,7 @@ training_args = TrainingArguments(
 
 # Initialize the Trainer
 trainer = Trainer(
+    
     model=model,
     args=training_args,
     train_dataset=tokenized_datasets,
